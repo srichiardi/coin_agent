@@ -3,31 +3,51 @@ from datetime import datetime
 
 class CoinAgent():
     
-    def __init__(self, start_price, currency, balance, margin = 0.2, purchase_date = datetime.today()):
-        self.start_price = start_price
-        self.currency = currency
-        self.balance = balance
-        self.purchase_date = purchase_date
+    def __init__(self,
+                 buy_price,
+                 euro_balance,
+                 crypt_balance = 0,
+                 margin = 0.2,
+                 buy = True):
+        self.buy_price = buy_price
+        self.euro_balance = euro_balance
+        self.crypt_balance = crypt_balance
         self.profit_margin = margin
-        self.sale_date = None
-        self.upward_trend = False
+        self.buy = buy
+        self.last_purchase_date = None
+        self.last_sale_date = None
+        self.current_price = None
         
-    def evaluate(self, current_price, sale_date = datetime.today()):
-        delta = (current_price - self.start_price) / self.start_price
-        # sell as soon as 20% profit is made
-        if delta > self.profit_margin:
-            sale = self.balance * current_price
-            self.profit = (current_price - self.start_price) * self.balance
-            self.balance = 0
-            self.sale_date = sale_date
+    def evaluate(self, current_price, date):
+        self.current_price = current_price
+        if self.buy:
+            if current_price <= self.buy_price:
+                self.crypt_balance = self.euro_balance * current_price
+                self.euro_balance = 0
+                self.last_purchase_date = date
+                self.buy = False
+                return self.report('buy', date)
+            else:
+                return self.report('pass', date)
         else:
-            return 0
+            delta = (current_price - self.start_price) / self.start_price
+            # sell as soon as 20% profit is made
+            if current_price >= self.buy_price * ( 1 + self.profit_margin ):
+                self.euro_balance = self.crypt_balance * current_price
+                self.crypt_balance = 0
+                self.last_sale_date = date
+                self.buy = True
+                return self.report('sell', date)
+            else:
+                return self.report('pass', date)
         
-    def report(self):
-        report_data = { 'purchase_date' : self.purchase_date,
-                       'sale_date' : self.sale_date,
-                       'invest_days' : '',
-                       'profit': self.profit }
+    def report(self, action, date):
+        report_data = { 'action' : action,
+                       'date' : date,
+                       'euro_balance' : self.euro_balance,
+                       'crypt_balance' : self.crypt_balance,
+                       'tot_value' : self.euro_balance + ( self.crypt_balance * self.current_price ) }
+        return report_data
         
         
 def main():
