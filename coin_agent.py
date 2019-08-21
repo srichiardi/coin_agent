@@ -1,5 +1,73 @@
 import csv
 from datetime import datetime
+from bisect import bisect_left
+
+
+class PriceNegativeValueError(Exception):
+    
+    def __init__(self, price):
+        message = "Negative price {}".format(price)
+        super().__init__(message)
+
+
+class BalanceManager():
+
+    def __init__(self):
+        self.balance = self.update_balance()
+
+    def update_balance(self):
+        return 1000
+
+
+class Agent():
+
+    def __init__(self, name, budget, balance):
+        self.name = name
+        self.budget = budget
+        self.invested = False
+
+    def invest(self, price, balance):
+        pass
+
+
+class AgentManager():
+
+    def __init__(self, balance, range_spread = 0.2):
+        self.balance = balance
+        self.spread = range_spread
+        self.ranges = [0]
+        self.ranges.extend(self._populate_ranges())
+        self.agents = {}
+
+    def _populate_ranges(self, lower_limit = 1, upper_limit = 1000):
+        next_bound = lower_limit
+        range_list = [ lower_limit ]
+        while next_bound < upper_limit:
+            next_bound *= (1 + self.spread)
+            range_list.append(next_bound)
+        return range_list
+
+    def _find_closest(self, my_number):
+        """
+        Assumes my_list is sorted. Returns min closest value to my_number.
+        """
+        pos = bisect_left(self.ranges, my_number)
+        # check if my_number is negative
+        if pos == 0:
+            raise PriceNegativeValueError(my_number)
+        if pos == len(self.ranges):
+            # if my_number is higher than upper list bound then add some more values
+            new_portion = self._populate_ranges(self.ranges[-1], my_number)
+            self.ranges.extend(new_portion[1:])
+            return self.ranges[-2]
+        return self.ranges[pos - 1]
+
+    def evaluate(self, price):
+        nearest_bound = self._find_closest(price)
+        if nearest_bound not in self.agents.keys():
+            # create a new agent
+            pass
+    
 
 
 class CoinAgent():
