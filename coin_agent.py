@@ -13,21 +13,62 @@ class PriceNegativeValueError(Exception):
 class BalanceManager():
 
     def __init__(self):
-        self.balance = self.update_balance()
+        self.balance = self.topup_balance(1000)
 
-    def update_balance(self):
-        return 1000
+    def topup_balance(self, amount):
+        self.balance += amount
+
+    def enough_funds(self, cost):
+        if self.balance - cost > 0:
+            return True
+        else:
+            return False
+
+    def invest_budget(self, budget):
+        self.balance -= budget
 
 
 class Agent():
 
-    def __init__(self, name, budget, balance):
+    def __init__(self, name, fiat_budget, balance, margin, crypt_budget = 0):
         self.name = name
-        self.budget = budget
+        self.fiat_budget = fiat_budget # how much agent can invest
+        self.crypt_budget = crypt_budget
+        self.balance = balance # general balance object
+        self.margin = margin
+        self.last_invested_price = 0
+        self.last_invested_date = None
         self.invested = False
 
-    def invest(self, price, balance):
-        pass
+    def invest(self, price, date):
+        if self.balance.enough_funds(self.budget):
+            if not self.invested:
+                # buy
+                self.balance.invest_budget(self.fiat_budget)
+                self.crypt_budget = self.fiat_budget / price
+                self.fiat_budget = 0
+                self.last_invested_price = price
+                self.last_invested_date = date
+
+    def divest(self, price):
+        if self.invested:
+            if( self.last_invested_price / price - 1 ) >= self.margin:
+                # sell
+                self.fiat_budget = self.crypt_budget * price
+                self.balance.topup_balance(self.fiat_budget)
+                self.crypt_budget = 0
+
+    def report(self, action, date, price):
+        invest_performance = ( price / self.last_invested_price - 1 ) * 100
+        report_data = { 'agent_name' : self.name,
+                        'action' : action,
+                        'date' : date,
+                        'euro_balance' : self.fiat_budget,
+                        'crypt_balance' : self.crypt_budget,
+                        'last_price' : price,
+                        'investment_value' : "{0:.2f} %".format(invest_performance),
+                        'tot_value' : self.fiat_budget + ( self.crypt_budget * price ) }
+        return report_data
 
 
 class AgentManager():
@@ -62,11 +103,11 @@ class AgentManager():
             return self.ranges[-2]
         return self.ranges[pos - 1]
 
-    def evaluate(self, price):
+    def buy_cycle(self, price):
         nearest_bound = self._find_closest(price)
         if nearest_bound not in self.agents.keys():
             # create a new agent
-            pass
+            agent = Agent()
     
 
 
