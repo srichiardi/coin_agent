@@ -52,7 +52,7 @@ class Agent():
 
     def divest(self, price):
         if self.invested:
-            if( self.last_invested_price / price - 1 ) >= self.margin:
+            if ( self.last_invested_price / price - 1 ) >= self.margin:
                 # sell
                 self.fiat_budget = self.crypt_budget * price
                 self.balance.topup_balance(self.fiat_budget)
@@ -107,7 +107,13 @@ class AgentManager():
         nearest_bound = self._find_closest(price)
         if nearest_bound not in self.agents.keys():
             # create a new agent
-            agent = Agent()
+            name = "agent_{}".format(len(self.agents))
+            fiat_budget = 200
+            balance = self.balance
+            margin = self.spread
+            agent = Agent(name, fiat_budget, balance, margin)
+            self.agents[nearest_bound] = agent
+            
     
 
 
