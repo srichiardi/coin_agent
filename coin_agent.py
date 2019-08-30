@@ -8,7 +8,7 @@ def main():
     # range spread = 0.1
     # profit margin = 0.1
     ROOT_DIR = os.path.split(__file__)[0]
-    hist_file = ROOT_DIR + "/.csv"
+    hist_file = ROOT_DIR + "/ETH.csv"
     am_logfile = ROOT_DIR + "/CoinAgent_Output.csv"
     
     bm = BalanceManager()
@@ -28,5 +28,9 @@ def main():
                 file_writer.writerow(am.status_report(today_price, today_date))
     
     
-    am.stop_agents_log()
+    am.close_agents_log()
+    
+    
+if __name__ == "__main__":
+    main()
     
