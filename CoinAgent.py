@@ -9,6 +9,34 @@ class PriceNegativeValueError(Exception):
     def __init__(self, price):
         message = "Crypto currency should not have negative value: {}".format(price)
         super().__init__(message)
+        
+        
+class NotEnoughBalanceError(Exception):
+    
+    def __init__(self, balance, cost):
+        message = "The balance {} is insufficient to invest {}".format(balance, cost)
+        super().__init__(message)
+        
+        
+class AlreadyInvestedError(Exception):
+    
+    def __init__(self, agent_range):
+        message = "Agent currently invested in range {}".format(agent_range)
+        super().__init__(message)
+        
+        
+class NothingToSellError(Exception):
+    
+    def __init__(self):
+        message = "Agent has no crypto coins to sell now"
+        super().__init__(message)
+        
+        
+class ProfitMarginNotReached(Exception):
+    
+    def __init__(self, current_margin, expected_margin):
+        message = "Margin {} still lower than expected {}".format(current_margin, expected_margin)
+        super().__init__(message)
 
 
 class BalanceManager():
@@ -53,25 +81,22 @@ class Agent():
                 # buy
                 self.balance.invest_budget(self.fiat_budget)
                 self.crypt_budget = self.fiat_budget / price
-                self.fiat_budget = 0
                 self.last_invested_price = price
                 if date:
                     self.last_invested_date = datetime.fromisoformat(date)
                 else:
                     self.last_invested_date = datetime.today()
                 self.invested = True
-                return True
             else:
-                return False
+                raise AlreadyInvestedError(self.agent_range)
         else:
-            return False
+            raise NotEnoughBalanceError(self.balance.balance, self.fiat_budget)
                     
 
     def divest(self, price, date = None):
         if self.invested:
             if ( price / self.last_invested_price  - 1 ) >= self.margin:
                 # sell
-                self.fiat_budget = self.crypt_budget * price
                 self.balance.topup_balance(self.fiat_budget)
                 self.cumulative_profits += ( price - self.last_invested_price ) * self.crypt_budget
                 self.crypt_budget = 0
@@ -81,11 +106,12 @@ class Agent():
                     self.last_divested_date = datetime.fromisoformat(date)
                 else:
                     self.last_divested_date = datetime.today()
-                return True
             else:
-                return False
+                current_margin = "{0:.3f}".format(( price / self.last_invested_price  - 1 ))
+                expected_margin = "{0:.3f}".format(self.margin)
+                raise ProfitMarginNotReached(current_margin, expected_margin)
         else:
-            return False
+            raise NothingToSellError()
                 
 
     def report(self, price, action, date = None):
@@ -95,16 +121,23 @@ class Agent():
         else:
             report_date = datetime.today()
             
+        if self.invested:
+            status = "invested"
+        else:
+            status = "idle"
+            
         report_data = OrderedDict()
         report_data['AGENT_NAME'] = self.name
         report_data['AGENT_RANGE'] = self.agent_range
+        report_data['STATUS'] = status
         report_data['ACTION'] = action
         report_data['ACTION_DATE'] = report_date.strftime("%Y-%m-%d")
-        report_data['EURO_BALANCE'] = self.fiat_budget
+        report_data['EURO_BUDGET'] = self.fiat_budget
         report_data['CRYPT_BALANCE'] = self.crypt_budget
+        report_data['CRYPT_BALANCE_VALUE'] = self.crypt_budget  * price
         report_data['CURR_PRICE'] = price
         report_data['INVESTED_PRICE'] = self.last_invested_price
-        report_data['CURR_VALUE'] = self.fiat_budget + ( self.crypt_budget * price )
+        report_data['EUR_BALANCE'] = self.balance.balance
         
         return report_data
     
@@ -132,7 +165,7 @@ class AgentManager():
             
             
     def start_agents_log(self):
-        field_names = Agent("dummy", (0, 0), 0, 0, 0)._get_report_fields() # create dummy agent just to get agents report fields
+        field_names = Agent("dummy", (0, 0), 0, self.balance, 0)._get_report_fields() # create dummy agent just to get agents report fields
         self.agents_log = open(self.log_file, 'w', newline='')
         self.file_writer = csv.DictWriter(self.agents_log, fieldnames=field_names)
         self.file_writer.writeheader()
@@ -189,18 +222,36 @@ class AgentManager():
             self.agents[nearest_bound] = agent
         else:
             agent = self.agents[nearest_bound]
-
-        if agent.invest(price, date):
-            agent_report = agent.report(price, "buy", date)
+        
+        act = ""
+        try:
+            agent.invest(price, date)
+        except NotEnoughBalanceError as e:
+            act = "no_balance"
+        except AlreadyInvestedError as e:
+            act = "already_invested"
+        else:
+            act = "buy"
+        finally:
             if self.log_file:
+                agent_report = agent.report(price, act, date)
                 self.file_writer.writerow(agent_report)
     
     
     def sell_cycle(self, price, date = None):
         for agent in self.agents.values():
-            if agent.divest(price):
-                agent_report = agent.report(price, "sell", date)
+            act = ""
+            try:
+                agent.divest(price)
+            except ProfitMarginNotReached:
+                act = "not_enough_profit"
+            except NothingToSellError:
+                act = "no_crypt_bal"
+            else:
+                act = "sell"
+            finally:
                 if self.log_file:
+                    agent_report = agent.report(price, act, date)
                     self.file_writer.writerow(agent_report)
             
     
@@ -209,7 +260,6 @@ class AgentManager():
         idle_agents = 0
         buys_today = 0
         sells_today = 0
-        fiat_balance = 0
         cryp_balance = 0
         invested_value = 0
         tot_value = 0
@@ -227,18 +277,17 @@ class AgentManager():
                 idle_agents += 1
             
             if agent.last_divested_date:
-                if (today - agent.last_divested_date).days == 0:
+                if (today.date() - agent.last_divested_date.date()).days == 0:
                     sells_today += 1
             
             if agent.last_invested_date:
-                if (today - agent.last_invested_date).days == 0:
+                if (today.date() - agent.last_invested_date.date()).days == 0:
                     buys_today += 1
             
-            fiat_balance += agent.fiat_budget
             cryp_balance += agent.crypt_budget
             
         cryp_balance_value = cryp_balance * price
-        tot_value = fiat_balance + cryp_balance_value
+        tot_value = self.balance.balance + cryp_balance_value
         status_report = OrderedDict()
         status_report['DATE'] = today.strftime("%Y-%m-%d")
         status_report['PRICE'] = price
@@ -246,7 +295,7 @@ class AgentManager():
         status_report['IDLE_AGENTS'] = idle_agents
         status_report['BUYS_TODAY'] = buys_today
         status_report['SELLS_TODAY'] = sells_today
-        status_report['FIAT_BALANCE'] = fiat_balance
+        status_report['GLOBAL_BALANCE'] = self.balance.balance
         status_report['CRYP_BALANCE'] = cryp_balance
         status_report['CRYP_BALANCE_VALUE'] = cryp_balance_value
         status_report['TOT_VALUE'] = tot_value
